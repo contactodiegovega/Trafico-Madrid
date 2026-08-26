@@ -5,6 +5,8 @@ import xml.etree.ElementTree as ET
 import plotly.express as px
 from pyproj import Transformer
 import sqlite3
+import ollama
+from rapidfuzz import process, fuzz
 # --------------------------------------------------
 # CONFIGURACIÓN GENERAL
 # --------------------------------------------------
@@ -763,11 +765,251 @@ with tab_historico:
     )
 
 # --------------------------------------------------
+# BUSCAR PUNTOS RELEVANTES
+# --------------------------------------------------
+
+def buscar_puntos_relevantes(pregunta, df, limite=8):
+    """
+    Busca puntos de tráfico cuya descripción se parezca
+    a lo escrito por el usuario.
+    """
+
+    descripciones = (
+        df["descripcion"]
+        .dropna()
+        .astype(str)
+        .unique()
+        .tolist()
+    )
+
+    resultados = process.extract(
+        pregunta,
+        descripciones,
+        scorer=fuzz.WRatio,
+        limit=limite
+    )
+
+    coincidencias = [
+        descripcion
+        for descripcion, puntuacion, _ in resultados
+        if puntuacion >= 55
+    ]
+
+    if not coincidencias:
+        return pd.DataFrame()
+
+    return df[
+        df["descripcion"].isin(coincidencias)
+    ].copy()
+
+
+# --------------------------------------------------
 # TAB CHAT
 # --------------------------------------------------
 
 with tab_chat:
 
-    st.info(
-        "💬 Aquí integraremos el chat con IA sobre los datos de tráfico."
+    st.markdown(
+        '<div class="section-title">💬 Pregunta al tráfico</div>',
+        unsafe_allow_html=True
     )
+
+    st.caption(
+        "Haz preguntas sobre el estado actual y el histórico del tráfico de Madrid."
+    )
+
+    # Crear historial de conversación
+    if "mensajes" not in st.session_state:
+        st.session_state.mensajes = []
+
+    # Mostrar mensajes anteriores
+    for mensaje in st.session_state.mensajes:
+        with st.chat_message(mensaje["rol"]):
+            st.markdown(mensaje["contenido"])
+
+    # Caja para escribir preguntas
+    pregunta = st.chat_input(
+        "Ejemplo: ¿Cómo está la calle Princesa?"
+    )
+
+    if pregunta:
+
+        # --------------------------------------------------
+        # GUARDAR Y MOSTRAR PREGUNTA DEL USUARIO
+        # --------------------------------------------------
+
+        st.session_state.mensajes.append(
+            {
+                "rol": "user",
+                "contenido": pregunta
+            }
+        )
+
+        with st.chat_message("user"):
+            st.markdown(pregunta)
+
+
+        # --------------------------------------------------
+        # CREAR CONTEXTO CON DATOS REALES
+        # --------------------------------------------------
+
+        total_puntos = len(df_actual)
+
+        conteo_estados = (
+            df_actual["estado_trafico"]
+            .value_counts()
+            .to_dict()
+        )
+
+        # Top general de retenciones/congestión
+        top_congestion = (
+            df_actual[
+                df_actual["estado_trafico"].isin(
+                    ["Retenciones", "Congestión"]
+                )
+            ]
+            .sort_values(
+                "carga",
+                ascending=False
+            )
+            .head(10)[
+                [
+                    "descripcion",
+                    "estado_trafico",
+                    "intensidad",
+                    "ocupacion",
+                    "carga"
+                ]
+            ]
+        )
+
+        # Buscar puntos relacionados con la pregunta
+        puntos_relevantes = buscar_puntos_relevantes(
+            pregunta,
+            df_actual
+        )
+
+        if not puntos_relevantes.empty:
+
+            contexto_puntos = puntos_relevantes[
+                [
+                    "descripcion",
+                    "estado_trafico",
+                    "intensidad",
+                    "ocupacion",
+                    "carga"
+                ]
+            ].to_string(index=False)
+
+        else:
+
+            contexto_puntos = (
+                "No se encontraron puntos claramente relacionados "
+                "con la pregunta del usuario."
+            )
+
+        # Construir contexto que recibirá Ollama
+        contexto_trafico = f"""
+DATOS ACTUALES DEL TRÁFICO DE MADRID
+
+Última actualización:
+{ultima_actualizacion}
+
+Número total de puntos analizados:
+{total_puntos}
+
+Distribución por estado:
+{conteo_estados}
+
+PUNTOS RELACIONADOS CON LA PREGUNTA:
+{contexto_puntos}
+
+PUNTOS CON MAYOR SATURACIÓN GENERAL:
+{top_congestion.to_string(index=False)}
+"""
+
+
+        # --------------------------------------------------
+        # CONSULTAR A OLLAMA
+        # --------------------------------------------------
+
+        try:
+
+            with st.spinner("Analizando el tráfico..."):
+
+                respuesta_ollama = ollama.chat(
+                    model="llama3.2:3b",
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": (
+                                "Eres el asistente de Madrid Traffic Explorer. "
+                                "Tu función es responder preguntas sobre el tráfico "
+                                "de Madrid utilizando exclusivamente los datos "
+                                "proporcionados como contexto. "
+
+                                "REGLAS IMPORTANTES: "
+                                "No inventes ubicaciones, cifras, horarios ni situaciones. "
+                                "No utilices conocimiento general sobre Madrid para completar "
+                                "información que no aparezca en los datos. "
+                                "Si los datos disponibles no permiten responder una pregunta, "
+                                "indícalo claramente. "
+
+                                "No deduzcas causas que los datos no demuestren. "
+                                "Por ejemplo, intensidad 0 y ocupación 100 no implica "
+                                "necesariamente que una vía esté completamente bloqueada. "
+                                "Describe los valores observados y el estado oficial del tráfico. "
+
+                                "Cuando haya varios puntos relacionados con una calle, "
+                                "indica que existen varias mediciones y resume sus diferencias. "
+
+                                "La variable intensidad representa flujo de vehículos "
+                                "en vehículos por hora. "
+                                "La variable ocupacion representa el porcentaje de "
+                                "ocupación de la vía. "
+                                "La variable carga representa el nivel de saturación de la vía. "
+                                "La variable estado_trafico representa la clasificación "
+                                "oficial disponible en los datos. "
+
+                                "Responde siempre en español, de forma clara, breve "
+                                "y útil para un usuario no técnico."
+                            )
+                        },
+                        {
+                            "role": "user",
+                            "content": f"""
+CONTEXTO REAL:
+
+{contexto_trafico}
+
+PREGUNTA DEL USUARIO:
+
+{pregunta}
+"""
+                        }
+                    ]
+                )
+
+            respuesta = respuesta_ollama["message"]["content"]
+
+        except Exception as e:
+
+            respuesta = (
+                "⚠️ No he podido conectar con el modelo de IA. "
+                f"Error: {e}"
+            )
+
+
+        # --------------------------------------------------
+        # GUARDAR Y MOSTRAR RESPUESTA
+        # --------------------------------------------------
+
+        st.session_state.mensajes.append(
+            {
+                "rol": "assistant",
+                "contenido": respuesta
+            }
+        )
+
+        with st.chat_message("assistant"):
+            st.markdown(respuesta)
