@@ -2,6 +2,8 @@
 
 Dashboard interactivo para analizar el **tráfico de Madrid en tiempo real**, consultar su evolución histórica y realizar preguntas sobre los datos mediante **Inteligencia Artificial**.
 
+## URL : https://trafico-madrid-arfjzfkr2gt5wptwyghpk7.streamlit.app/
+
 ## 🎯 Objetivo
 
 El proyecto transforma los datos abiertos de tráfico del **Ayuntamiento de Madrid** en información visual y comprensible para el usuario.
