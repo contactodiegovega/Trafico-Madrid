@@ -6,6 +6,7 @@ import plotly.express as px
 from pyproj import Transformer
 import sqlite3
 import ollama
+import textwrap
 from rapidfuzz import process, fuzz
 # --------------------------------------------------
 # CONFIGURACIÓN GENERAL
@@ -18,80 +19,493 @@ st.set_page_config(
 )
 
 # --------------------------------------------------
+# --------------------------------------------------
 # ESTILOS
 # --------------------------------------------------
 
 st.markdown("""
 <style>
 
+/* ================================
+   FONDO GENERAL
+================================ */
+
+.stApp {
+    background:
+        radial-gradient(
+            circle at 15% 0%,
+            rgba(59, 130, 246, 0.12),
+            transparent 28%
+        ),
+        radial-gradient(
+            circle at 85% 5%,
+            rgba(52, 211, 153, 0.08),
+            transparent 25%
+        ),
+        #070b14;
+}
+
 .block-container {
-    padding-top: 2rem;
+    padding-top: 1.5rem;
     padding-bottom: 3rem;
     max-width: 1500px;
 }
 
-.hero {
-    padding: 1.8rem 2rem;
-    border-radius: 20px;
-    background: linear-gradient(
-        120deg,
-        rgba(30, 41, 59, 0.95),
-        rgba(15, 23, 42, 0.95)
-    );
-    border: 1px solid rgba(255,255,255,0.08);
-    margin-bottom: 1.4rem;
+[data-testid="stHeader"] {
+    background: rgba(7, 11, 20, 0.80);
 }
 
-.hero-title {
-    font-size: 2.5rem;
+
+/* ================================
+   HERO
+================================ */
+
+.hero {
+    position: relative;
+    overflow: hidden;
+
+    padding: 2.4rem 2.5rem;
+
+    border-radius: 28px;
+
+    background:
+        linear-gradient(
+            135deg,
+            rgba(17, 24, 39, 0.98),
+            rgba(8, 15, 29, 0.98)
+        );
+
+    border: 1px solid rgba(255,255,255,0.08);
+
+    box-shadow:
+        0 20px 60px rgba(0,0,0,0.30);
+
+    margin-bottom: 1.2rem;
+}
+
+
+.hero::after {
+
+    content: "";
+
+    position: absolute;
+
+    width: 380px;
+    height: 380px;
+
+    right: -150px;
+    top: -220px;
+
+    border-radius: 50%;
+
+    background:
+        rgba(52, 211, 153, 0.12);
+
+    filter: blur(10px);
+}
+
+
+.eyebrow {
+
+    color: #60a5fa;
+
+    font-size: 0.75rem;
+
+    letter-spacing: 0.17em;
+
     font-weight: 800;
+
+    text-transform: uppercase;
+
+    margin-bottom: 0.9rem;
+}
+
+
+.hero-title {
+
+    font-size: clamp(2.5rem, 5vw, 4.5rem);
+
+    line-height: 0.95;
+
+    font-weight: 900;
+
+    letter-spacing: -0.055em;
+
+    margin-bottom: 1rem;
+}
+
+
+.hero-title span {
+    color: #34d399;
+}
+
+
+.hero-subtitle {
+
+    color: #9ba8bb;
+
+    font-size: 1.05rem;
+
+    max-width: 780px;
+
+    line-height: 1.65;
+}
+
+
+/* ================================
+   LIVE BADGE
+================================ */
+
+.update-pill {
+
+    display: inline-flex;
+
+    align-items: center;
+
+    gap: 0.6rem;
+
+    padding: 0.5rem 0.85rem;
+
+    border-radius: 999px;
+
+    background:
+        rgba(52, 211, 153, 0.10);
+
+    border:
+        1px solid rgba(52, 211, 153, 0.25);
+
+    color: #6ee7b7;
+
+    font-size: 0.85rem;
+
+    font-weight: 700;
+
+    margin-top: 1.3rem;
+}
+
+
+.live-dot {
+
+    width: 8px;
+    height: 8px;
+
+    border-radius: 50%;
+
+    background: #34d399;
+
+    animation: pulse 1.8s infinite;
+}
+
+
+@keyframes pulse {
+
+    0% {
+        box-shadow:
+            0 0 0 0
+            rgba(52,211,153,0.45);
+    }
+
+    70% {
+        box-shadow:
+            0 0 0 10px
+            rgba(52,211,153,0);
+    }
+
+    100% {
+        box-shadow:
+            0 0 0 0
+            rgba(52,211,153,0);
+    }
+}
+
+
+/* ================================
+   ESTADO GENERAL
+================================ */
+
+.status-panel {
+
+    padding: 1.1rem 1.3rem;
+
+    border-radius: 18px;
+
+    background:
+        rgba(255,255,255,0.035);
+
+    border:
+        1px solid rgba(255,255,255,0.07);
+
+    margin:
+        0.3rem 0 1.1rem 0;
+}
+
+
+.status-title {
+
+    font-size: 1rem;
+
+    font-weight: 800;
+
     margin-bottom: 0.3rem;
 }
 
-.hero-subtitle {
-    color: #a8b2c1;
-    font-size: 1rem;
+
+.status-text {
+
+    color: #94a3b8;
+
+    font-size: 0.9rem;
 }
 
-.update-pill {
-    display: inline-block;
-    padding: 0.45rem 0.8rem;
-    border-radius: 999px;
-    background: rgba(34,197,94,0.15);
-    color: #4ade80;
-    font-size: 0.9rem;
-    margin-top: 1rem;
-}
+
+/* ================================
+   KPI CARDS
+================================ */
 
 .kpi-card {
-    padding: 1.2rem 1.3rem;
-    border-radius: 18px;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.08);
-    min-height: 120px;
+
+    padding: 1.25rem;
+
+    border-radius: 20px;
+
+    background:
+        linear-gradient(
+            180deg,
+            rgba(255,255,255,0.055),
+            rgba(255,255,255,0.025)
+        );
+
+    border:
+        1px solid rgba(255,255,255,0.075);
+
+    min-height: 125px;
+
+    transition:
+        transform 0.2s ease,
+        border-color 0.2s ease;
 }
+
+
+.kpi-card:hover {
+
+    transform:
+        translateY(-4px);
+
+    border-color:
+        rgba(255,255,255,0.17);
+}
+
 
 .kpi-label {
-    color: #9ca3af;
-    font-size: 0.85rem;
+
+    color: #91a0b5;
+
+    font-size: 0.78rem;
+
+    font-weight: 700;
+
+    letter-spacing: 0.03em;
 }
+
 
 .kpi-value {
-    font-size: 2rem;
-    font-weight: 700;
-    margin-top: 0.35rem;
+
+    font-size: 2.2rem;
+
+    font-weight: 850;
+
+    letter-spacing: -0.04em;
+
+    margin-top: 0.4rem;
 }
+
+
+.kpi-note {
+
+    color: #64748b;
+
+    font-size: 0.73rem;
+
+    margin-top: 0.25rem;
+}
+
+
+/* ================================
+   TÍTULOS
+================================ */
+
+.section-kicker {
+
+    color: #60a5fa;
+
+    font-size: 0.72rem;
+
+    letter-spacing: 0.15em;
+
+    font-weight: 800;
+
+    text-transform: uppercase;
+
+    margin-top: 1.3rem;
+}
+
 
 .section-title {
-    font-size: 1.45rem;
-    font-weight: 700;
-    margin-top: 1rem;
-    margin-bottom: 0.8rem;
+
+    font-size: 1.7rem;
+
+    font-weight: 850;
+
+    letter-spacing: -0.03em;
+
+    margin-top: 0.15rem;
+
+    margin-bottom: 1rem;
 }
 
+
+/* ================================
+   TABS
+================================ */
+
+div[data-baseweb="tab-list"] {
+
+    gap: 0.35rem;
+
+    padding: 0.35rem;
+
+    border-radius: 16px;
+
+    background:
+        rgba(255,255,255,0.025);
+}
+
+
+button[data-baseweb="tab"] {
+
+    border-radius: 12px;
+
+    padding-left: 1.1rem !important;
+
+    padding-right: 1.1rem !important;
+}
+
+
+div[data-baseweb="tab-highlight"] {
+
+    background-color:
+        #34d399;
+}
+
+
+/* ================================
+   METRICS
+================================ */
+
+[data-testid="stMetric"] {
+
+    padding: 1rem;
+
+    border-radius: 16px;
+
+    background:
+        rgba(255,255,255,0.03);
+
+    border:
+        1px solid rgba(255,255,255,0.06);
+}
+
+
+/* ================================
+   DATAFRAME
+================================ */
+
+[data-testid="stDataFrame"] {
+
+    border-radius: 16px;
+
+    overflow: hidden;
+
+    border:
+        1px solid rgba(255,255,255,0.07);
+}
+
+
+/* ================================
+   CHAT
+================================ */
+
+[data-testid="stChatInput"] {
+
+    border:
+        1px solid rgba(52,211,153,0.25);
+}
+
+
+/* ================================
+   DIVIDERS
+================================ */
+
+hr {
+
+    border-color:
+        rgba(255,255,255,0.07);
+}
+/* ================================
+   KPI NATIVOS
+================================ */
+
+[data-testid="stMetric"] {
+
+    background:
+        linear-gradient(
+            180deg,
+            rgba(255,255,255,0.045),
+            rgba(255,255,255,0.015)
+        );
+
+    border-radius: 16px;
+
+    padding: 0.5rem 0.3rem;
+
+}
+
+
+[data-testid="stMetricLabel"] {
+
+    font-size: 0.78rem;
+
+    font-weight: 700;
+
+    letter-spacing: 0.03em;
+
+    color: #94a3b8;
+
+}
+
+
+[data-testid="stMetricValue"] {
+
+    font-size: 2rem;
+
+    font-weight: 800;
+
+}
+
+
+[data-testid="stVerticalBlockBorderWrapper"] {
+
+    border-color:
+        rgba(255,255,255,0.08) !important;
+
+    border-radius: 20px !important;
+
+    background:
+        rgba(255,255,255,0.02);
+
+}
 </style>
 """, unsafe_allow_html=True)
-
 
 # --------------------------------------------------
 # CARGA Y LIMPIEZA DE DATOS
@@ -327,26 +741,29 @@ except Exception as e:
 # CABECERA
 # --------------------------------------------------
 
-st.markdown(
+st.html(
     f"""
     <div class="hero">
-        <div class="hero-title">🚦 Madrid Traffic Explorer</div>
+        <div class="eyebrow">MADRID · LIVE MOBILITY</div>
+        <div class="hero-title">Madrid <span>Traffic</span> Explorer</div>
         <div class="hero-subtitle">
-            Descubre cómo se mueve Madrid ahora mismo.
-            Tráfico actualizado a partir de los datos oficiales del Ayuntamiento.
+            Una mirada en tiempo real al pulso de movilidad de Madrid.
+            Explora sensores, detecta puntos críticos y consulta los datos con Inteligencia Artificial.
         </div>
         <div class="update-pill">
-            ● Actualizado {ultima_actualizacion}
+            <span class="live-dot"></span>
+            LIVE · actualizado {ultima_actualizacion}
         </div>
     </div>
-    """,
-    unsafe_allow_html=True
+    """
 )
 
 if nuevos_registros > 0:
     st.toast(
         f"📥 Nueva captura guardada: {nuevos_registros:,} mediciones"
     )
+
+
 # --------------------------------------------------
 # KPIs
 # --------------------------------------------------
@@ -370,29 +787,64 @@ congestion = (
 ).sum()
 
 
+# --------------------------------------------------
+# RESUMEN AUTOMÁTICO DEL ESTADO DE MADRID
+# --------------------------------------------------
+
+porcentaje_fluido = (
+    fluido / total * 100
+    if total > 0
+    else 0
+)
+
+if porcentaje_fluido >= 90:
+    lectura_estado = "🟢 Madrid circula con normalidad"
+elif porcentaje_fluido >= 75:
+    lectura_estado = "🟡 Madrid presenta algunas incidencias"
+else:
+    lectura_estado = "🔴 Madrid presenta tráfico complicado"
+
+
+st.html(
+    f"""
+    <div class="status-panel">
+        <div class="status-title">{lectura_estado}</div>
+        <div class="status-text">
+            El <b>{porcentaje_fluido:.1f}%</b> de los puntos presentan tráfico fluido.
+            Actualmente hay <b>{retenciones}</b> puntos con retenciones
+            y <b>{congestion}</b> con congestión.
+        </div>
+    </div>
+    """
+)
+
+
+# --------------------------------------------------
+# TARJETAS KPI
+# --------------------------------------------------
+
 cols = st.columns(5)
 
 datos_kpi = [
-    ("📍 Puntos analizados", total),
-    ("🟢 Fluido", fluido),
-    ("🟡 Lento", lento),
-    ("🟠 Retenciones", retenciones),
-    ("🔴 Congestión", congestion)
+    ("📍 PUNTOS ACTIVOS", total, "sensores analizados"),
+    ("🟢 FLUIDO", fluido, f"{porcentaje_fluido:.1f}% del total"),
+    ("🟡 LENTO", lento, "circulación moderada"),
+    ("🟠 RETENCIONES", retenciones, "requieren atención"),
+    ("🔴 CONGESTIÓN", congestion, "situación crítica")
 ]
 
-for col, (titulo, valor) in zip(cols, datos_kpi):
-
+for col, (titulo, valor, nota) in zip(cols, datos_kpi):
     with col:
-
-        st.markdown(
+        st.html(
             f"""
             <div class="kpi-card">
                 <div class="kpi-label">{titulo}</div>
                 <div class="kpi-value">{valor:,}</div>
+                <div class="kpi-note">{nota}</div>
             </div>
-            """,
-            unsafe_allow_html=True
+            """
         )
+
 
 
 # --------------------------------------------------
