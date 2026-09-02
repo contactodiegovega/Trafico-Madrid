@@ -1,86 +1,47 @@
 # 🚦 Madrid Traffic Explorer
 
-Dashboard interactivo para analizar el **tráfico de Madrid en tiempo real**, consultar su evolución histórica y realizar preguntas sobre los datos mediante **Inteligencia Artificial**.
+Dashboard interactivo para explorar la **movilidad de Madrid**, combinando datos de tráfico en tiempo real, siniestralidad vial e Inteligencia Artificial.
 
-## URL : https://trafico-madrid-arfjzfkr2gt5wptwyghpk7.streamlit.app/
+## 🌐 Demo
+
+https://trafico-madrid-arfjzfkr2gt5wptwyghpk7.streamlit.app/
 
 ## 🎯 Objetivo
 
-El proyecto transforma los datos abiertos de tráfico del **Ayuntamiento de Madrid** en información visual y comprensible para el usuario.
-
-Integra en una misma aplicación:
-
-- 🚦 Estado del tráfico en tiempo real
-- 🗺️ Mapa interactivo de Madrid
-- 📈 Análisis histórico
-- 💬 Chat con Inteligencia Artificial
+Transformar los datos abiertos del **Ayuntamiento de Madrid** en información visual, interactiva y fácil de interpretar.
 
 ## ✨ Funcionalidades
 
-### 🚦 Tráfico actual
-Consulta y procesa miles de puntos de medición, mostrando:
+### 🚦 Tráfico en tiempo real
+- Análisis de miles de sensores de tráfico.
+- Flujo, ocupación y saturación de las vías.
+- Identificación de retenciones y congestión.
 
-- Flujo de vehículos (veh/h)
-- Ocupación de la vía (%)
-- Saturación (%)
-- Estado: **Fluido, Lento, Retenciones o Congestión**
+### 🗺️ Live Map
+Mapa interactivo para explorar el estado actual del tráfico y localizar los puntos con mayor carga.
 
-### 🗺️ Mapa interactivo
-Permite explorar los puntos de medición sobre Madrid, filtrar por estado del tráfico y consultar información detallada de cada punto.
+### 🚨 Siniestralidad vial
+Análisis de accidentes registrados por la Policía Municipal desde 2019:
+- Mapa de accidentes.
+- Filtros por año, distrito y tipo.
+- Evolución mensual y distribución horaria.
+- Identificación de zonas y franjas con mayor siniestralidad.
 
-### 📈 Histórico
-Las capturas se almacenan en **SQLite** para analizar la evolución del tráfico y comparar diferentes momentos.
-
-### 💬 Chat IA
-Asistente desarrollado con **Ollama + Llama 3.2** que utiliza los datos reales del tráfico como contexto.
-
-Ejemplos:
-
-> ¿Cómo está la calle Princesa?  
-> ¿Dónde hay más congestión ahora?  
-> ¿Cuántos puntos tienen retenciones?
-
-Se utiliza **RapidFuzz** para mejorar la búsqueda de calles y puntos aunque el usuario no escriba exactamente su nombre.
+### ✦ Ask Madrid
+Asistente con **Ollama + Llama 3.2** que utiliza los datos reales del tráfico como contexto para responder preguntas sobre la movilidad de Madrid.
 
 ## 🛠️ Tecnologías
 
-`Python` · `Pandas` · `Streamlit` · `Plotly` · `SQLite` · `Ollama` · `Llama 3.2` · `RapidFuzz` · `Git`
+`Python` · `Pandas` · `Streamlit` · `Plotly` · `Ollama` · `Llama 3.2` · `RapidFuzz` · `Git`
 
-## 🧠 Arquitectura
+## 📊 Fuentes de datos
 
-```text
-Datos Ayuntamiento de Madrid
-           ↓
-     Python + Pandas
-           ↓
-   Limpieza y análisis
-           ↓
-    ┌──────┴──────┐
-    ↓             ↓
-Datos actuales   SQLite
-    └──────┬──────┘
-           ↓
-       Streamlit
-    ┌──────┼──────┐
-    ↓      ↓      ↓
-  KPIs    Mapa  Histórico
-                  ↓
-               Chat IA
-                  ↓
-          Ollama + Llama 3.2
-```
-
-## 🚀 Ejecutar el proyecto
-
-```bash
-pip install -r requirements.txt
-ollama pull llama3.2:3b
-python -m streamlit run app.py
-```
+Datos abiertos del **Ayuntamiento de Madrid**:
+- Tráfico: actualización aproximada cada 5 minutos.
+- Accidentes de tráfico: actualización mensual.
 
 ## 👤 Autor
 
 **Diego Vega**
 
-Proyecto de portfolio desarrollado dentro de mi formación en **Data Analytics & IA**.
-
+Proyecto de portfolio desarrollado durante mi formación en **Data Analytics & IA**.

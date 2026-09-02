@@ -1412,36 +1412,53 @@ with tab_accidentes:
 # TAB CHAT
 # --------------------------------------------------
 
+# --------------------------------------------------
+# TAB CHAT
+# --------------------------------------------------
+
 with tab_chat:
 
     st.markdown(
-        '<div class="section-title">💬 Pregunta al tráfico</div>',
+        '<div class="section-title">✦ Ask Madrid Traffic Explorer</div>',
         unsafe_allow_html=True
     )
 
     st.caption(
-        "Haz preguntas sobre el estado actual y el histórico del tráfico de Madrid."
+        "Pregunta sobre el tráfico actual o la siniestralidad vial de Madrid."
     )
 
-    # Crear historial de conversación
+    # --------------------------------------------------
+    # CARGAR ACCIDENTES PARA EL CHAT
+    # --------------------------------------------------
+
+    if "df_accidentes" not in locals():
+        df_accidentes = cargar_accidentes()
+
+    # --------------------------------------------------
+    # HISTORIAL DE CONVERSACIÓN
+    # --------------------------------------------------
+
     if "mensajes" not in st.session_state:
         st.session_state.mensajes = []
 
-    # Mostrar mensajes anteriores
     for mensaje in st.session_state.mensajes:
-        with st.chat_message(mensaje["rol"]):
-            st.markdown(mensaje["contenido"])
 
-    # Caja para escribir preguntas
+        with st.chat_message(
+            mensaje["rol"]
+        ):
+            st.markdown(
+                mensaje["contenido"]
+            )
+
+    # --------------------------------------------------
+    # INPUT
+    # --------------------------------------------------
+
     pregunta = st.chat_input(
-        "Ejemplo: ¿Cómo está la calle Princesa?"
+        "Ejemplo: ¿Qué distrito tuvo más accidentes en 2025?"
     )
 
     if pregunta:
-
-        # --------------------------------------------------
-        # GUARDAR Y MOSTRAR PREGUNTA DEL USUARIO
-        # --------------------------------------------------
 
         st.session_state.mensajes.append(
             {
@@ -1453,160 +1470,447 @@ with tab_chat:
         with st.chat_message("user"):
             st.markdown(pregunta)
 
-
         # --------------------------------------------------
-        # CREAR CONTEXTO CON DATOS REALES
+        # DETECTAR TIPO DE PREGUNTA
         # --------------------------------------------------
 
-        total_puntos = len(df_actual)
+        pregunta_lower = pregunta.lower()
 
-        conteo_estados = (
-            df_actual["estado_trafico"]
-            .value_counts()
-            .to_dict()
+        palabras_accidentes = [
+            "accidente",
+            "accidentes",
+            "siniestro",
+            "siniestros",
+            "atropello",
+            "atropellos",
+            "colisión",
+            "colisiones",
+            "choque",
+            "choques",
+            "lesividad",
+            "herido",
+            "heridos",
+            "víctima",
+            "víctimas",
+            "alcohol",
+            "droga",
+            "drogas",
+            "peatón",
+            "peatones"
+        ]
+
+        palabras_trafico = [
+            "tráfico",
+            "trafico",
+            "congestión",
+            "congestion",
+            "retención",
+            "retenciones",
+            "fluido",
+            "lento",
+            "saturación",
+            "saturacion",
+            "ocupación",
+            "ocupacion",
+            "intensidad",
+            "vehículos por hora"
+        ]
+
+        pregunta_accidentes = any(
+            palabra in pregunta_lower
+            for palabra in palabras_accidentes
         )
 
-        # Top general de retenciones/congestión
-        top_congestion = (
-            df_actual[
-                df_actual["estado_trafico"].isin(
-                    ["Retenciones", "Congestión"]
+        pregunta_trafico = any(
+            palabra in pregunta_lower
+            for palabra in palabras_trafico
+        )
+
+        # --------------------------------------------------
+        # CONTEXTO DE TRÁFICO
+        # --------------------------------------------------
+
+        contexto_trafico = ""
+
+        if pregunta_trafico or not pregunta_accidentes:
+
+            total_puntos = len(
+                df_actual
+            )
+
+            conteo_estados = (
+                df_actual[
+                    "estado_trafico"
+                ]
+                .value_counts()
+                .to_dict()
+            )
+
+            top_congestion = (
+                df_actual[
+                    df_actual[
+                        "estado_trafico"
+                    ].isin(
+                        [
+                            "Retenciones",
+                            "Congestión"
+                        ]
+                    )
+                ]
+                .sort_values(
+                    "carga",
+                    ascending=False
                 )
-            ]
-            .sort_values(
-                "carga",
-                ascending=False
-            )
-            .head(10)[
-                [
-                    "descripcion",
-                    "estado_trafico",
-                    "intensidad",
-                    "ocupacion",
-                    "carga"
+                .head(10)[
+                    [
+                        "descripcion",
+                        "estado_trafico",
+                        "intensidad",
+                        "ocupacion",
+                        "carga"
+                    ]
                 ]
-            ]
-        )
-
-        # Buscar puntos relacionados con la pregunta
-        puntos_relevantes = buscar_puntos_relevantes(
-            pregunta,
-            df_actual
-        )
-
-        if not puntos_relevantes.empty:
-
-            contexto_puntos = puntos_relevantes[
-                [
-                    "descripcion",
-                    "estado_trafico",
-                    "intensidad",
-                    "ocupacion",
-                    "carga"
-                ]
-            ].to_string(index=False)
-
-        else:
-
-            contexto_puntos = (
-                "No se encontraron puntos claramente relacionados "
-                "con la pregunta del usuario."
             )
 
-        # Construir contexto que recibirá Ollama
-        contexto_trafico = f"""
-DATOS ACTUALES DEL TRÁFICO DE MADRID
+            puntos_relevantes = (
+                buscar_puntos_relevantes(
+                    pregunta,
+                    df_actual
+                )
+            )
+
+            if not puntos_relevantes.empty:
+
+                contexto_puntos = (
+                    puntos_relevantes[
+                        [
+                            "descripcion",
+                            "estado_trafico",
+                            "intensidad",
+                            "ocupacion",
+                            "carga"
+                        ]
+                    ]
+                    .to_string(
+                        index=False
+                    )
+                )
+
+            else:
+
+                contexto_puntos = (
+                    "No se encontraron "
+                    "puntos claramente relacionados."
+                )
+
+            contexto_trafico = f"""
+DATOS DE TRÁFICO EN TIEMPO REAL
 
 Última actualización:
 {ultima_actualizacion}
 
-Número total de puntos analizados:
+Puntos analizados:
 {total_puntos}
 
-Distribución por estado:
+Distribución del tráfico:
 {conteo_estados}
 
 PUNTOS RELACIONADOS CON LA PREGUNTA:
 {contexto_puntos}
 
-PUNTOS CON MAYOR SATURACIÓN GENERAL:
+PUNTOS CON MAYOR SATURACIÓN:
 {top_congestion.to_string(index=False)}
 """
 
+        # --------------------------------------------------
+        # CONTEXTO DE ACCIDENTES
+        # --------------------------------------------------
+
+        contexto_accidentes = ""
+
+        if pregunta_accidentes:
+
+            # ----------------------------------------------
+            # DETECTAR AÑO
+            # ----------------------------------------------
+
+            anios_disponibles = sorted(
+                df_accidentes[
+                    "anio"
+                ]
+                .dropna()
+                .astype(int)
+                .unique()
+                .tolist()
+            )
+
+            anio_pregunta = None
+
+            for anio_posible in anios_disponibles:
+
+                if str(
+                    anio_posible
+                ) in pregunta_lower:
+
+                    anio_pregunta = (
+                        anio_posible
+                    )
+
+                    break
+
+            # Si no especifica año,
+            # usamos el más reciente
+            if anio_pregunta is None:
+
+                anio_pregunta = max(
+                    anios_disponibles
+                )
+
+            df_acc_chat = (
+                df_accidentes[
+                    df_accidentes[
+                        "anio"
+                    ] == anio_pregunta
+                ]
+                .copy()
+            )
+
+            # ----------------------------------------------
+            # UNA FILA POR ACCIDENTE
+            # ----------------------------------------------
+
+            df_siniestros_chat = (
+                df_acc_chat
+                .sort_values("fecha")
+                .drop_duplicates(
+                    subset=[
+                        "num_expediente"
+                    ]
+                )
+                .copy()
+            )
+
+            total_accidentes_chat = (
+                df_siniestros_chat[
+                    "num_expediente"
+                ]
+                .nunique()
+            )
+
+            # ----------------------------------------------
+            # DISTRITOS
+            # ----------------------------------------------
+
+            accidentes_distrito = (
+                df_siniestros_chat[
+                    "distrito"
+                ]
+                .value_counts()
+                .head(10)
+            )
+
+            # ----------------------------------------------
+            # TIPOS
+            # ----------------------------------------------
+
+            accidentes_tipo = (
+                df_siniestros_chat[
+                    "tipo_accidente"
+                ]
+                .value_counts()
+                .head(10)
+            )
+
+            # ----------------------------------------------
+            # HORAS
+            # ----------------------------------------------
+
+            accidentes_hora = (
+                df_siniestros_chat[
+                    "hora_num"
+                ]
+                .dropna()
+                .astype(int)
+                .value_counts()
+                .sort_values(
+                    ascending=False
+                )
+                .head(10)
+            )
+
+            # ----------------------------------------------
+            # PERSONAS IMPLICADAS
+            # ----------------------------------------------
+
+            personas_implicadas = len(
+                df_acc_chat
+            )
+
+            # ----------------------------------------------
+            # ALCOHOL
+            # ----------------------------------------------
+
+            alcohol = (
+                df_acc_chat[
+                    "positiva_alcohol"
+                ]
+                .value_counts(
+                    dropna=False
+                )
+                .head(10)
+                .to_dict()
+            )
+
+            # ----------------------------------------------
+            # DROGAS
+            # ----------------------------------------------
+
+            drogas = (
+                df_acc_chat[
+                    "positiva_droga"
+                ]
+                .value_counts(
+                    dropna=False
+                )
+                .head(10)
+                .to_dict()
+            )
+
+            contexto_accidentes = f"""
+DATOS DE SINIESTRALIDAD VIAL DE MADRID
+
+Año analizado:
+{anio_pregunta}
+
+Número de accidentes únicos:
+{total_accidentes_chat}
+
+Número de registros de personas implicadas:
+{personas_implicadas}
+
+ACCIDENTES POR DISTRITO:
+{accidentes_distrito.to_string()}
+
+TIPOS DE ACCIDENTE MÁS FRECUENTES:
+{accidentes_tipo.to_string()}
+
+HORAS CON MÁS ACCIDENTES:
+{accidentes_hora.to_string()}
+
+RESULTADOS DE ALCOHOL:
+{alcohol}
+
+RESULTADOS DE DROGAS:
+{drogas}
+
+IMPORTANTE:
+Cada accidente puede aparecer varias veces
+en el dataset porque existe una fila por persona
+implicada.
+
+Para contar accidentes se utiliza siempre
+num_expediente como identificador único.
+"""
 
         # --------------------------------------------------
-        # CONSULTAR A OLLAMA
+        # CONTEXTO FINAL
+        # --------------------------------------------------
+
+        contexto_final = f"""
+{contexto_trafico}
+
+{contexto_accidentes}
+"""
+
+        # --------------------------------------------------
+        # CONSULTAR OLLAMA
         # --------------------------------------------------
 
         try:
 
-            with st.spinner("Analizando el tráfico..."):
+            with st.spinner(
+                "Analizando los datos de Madrid..."
+            ):
 
-                respuesta_ollama = ollama.chat(
-                    model="llama3.2:3b",
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": (
-                                "Eres el asistente de Madrid Traffic Explorer. "
-                                "Tu función es responder preguntas sobre el tráfico "
-                                "de Madrid utilizando exclusivamente los datos "
-                                "proporcionados como contexto. "
+                respuesta_ollama = (
+                    ollama.chat(
+                        model="llama3.2:3b",
+                        messages=[
+                            {
+                                "role": "system",
+                                "content": (
+                                    "Eres Ask Madrid Traffic Explorer, "
+                                    "un asistente especializado en movilidad "
+                                    "y siniestralidad vial de Madrid. "
 
-                                "REGLAS IMPORTANTES: "
-                                "No inventes ubicaciones, cifras, horarios ni situaciones. "
-                                "No utilices conocimiento general sobre Madrid para completar "
-                                "información que no aparezca en los datos. "
-                                "Si los datos disponibles no permiten responder una pregunta, "
-                                "indícalo claramente. "
+                                    "Puedes responder preguntas sobre dos "
+                                    "fuentes de datos: tráfico en tiempo real "
+                                    "y accidentes de tráfico registrados por "
+                                    "la Policía Municipal. "
 
-                                "No deduzcas causas que los datos no demuestren. "
-                                "Por ejemplo, intensidad 0 y ocupación 100 no implica "
-                                "necesariamente que una vía esté completamente bloqueada. "
-                                "Describe los valores observados y el estado oficial del tráfico. "
+                                    "Utiliza EXCLUSIVAMENTE los datos "
+                                    "proporcionados en el contexto. "
 
-                                "Cuando haya varios puntos relacionados con una calle, "
-                                "indica que existen varias mediciones y resume sus diferencias. "
+                                    "No inventes cifras, calles, accidentes, "
+                                    "causas o explicaciones que no estén "
+                                    "respaldadas por los datos. "
 
-                                "La variable intensidad representa flujo de vehículos "
-                                "en vehículos por hora. "
-                                "La variable ocupacion representa el porcentaje de "
-                                "ocupación de la vía. "
-                                "La variable carga representa el nivel de saturación de la vía. "
-                                "La variable estado_trafico representa la clasificación "
-                                "oficial disponible en los datos. "
+                                    "Si la información disponible no permite "
+                                    "responder, indícalo claramente. "
 
-                                "Responde siempre en español, de forma clara, breve "
-                                "y útil para un usuario no técnico."
-                            )
-                        },
-                        {
-                            "role": "user",
-                            "content": f"""
-CONTEXTO REAL:
+                                    "Para los datos de accidentes, recuerda "
+                                    "que num_expediente identifica un accidente "
+                                    "único y que pueden existir varias filas "
+                                    "para un mismo accidente porque cada fila "
+                                    "puede representar una persona implicada. "
 
-{contexto_trafico}
+                                    "No confundas número de registros con "
+                                    "número de accidentes. "
 
-PREGUNTA DEL USUARIO:
+                                    "Cuando hables de tráfico, intensidad "
+                                    "representa vehículos por hora, ocupación "
+                                    "el porcentaje de ocupación de la vía y "
+                                    "carga el nivel de saturación. "
+
+                                    "Responde siempre en español, de forma "
+                                    "clara, breve y útil para un usuario "
+                                    "no técnico."
+                                )
+                            },
+                            {
+                                "role": "user",
+                                "content": f"""
+CONTEXTO REAL DE MADRID:
+
+{contexto_final}
+
+PREGUNTA:
 
 {pregunta}
 """
-                        }
-                    ]
+                            }
+                        ]
+                    )
                 )
 
-            respuesta = respuesta_ollama["message"]["content"]
+            respuesta = (
+                respuesta_ollama[
+                    "message"
+                ][
+                    "content"
+                ]
+            )
 
         except Exception as e:
 
             respuesta = (
-                "⚠️ No he podido conectar con el modelo de IA. "
+                "⚠️ No he podido conectar "
+                "con el modelo de IA. "
                 f"Error: {e}"
             )
 
-
         # --------------------------------------------------
-        # GUARDAR Y MOSTRAR RESPUESTA
+        # MOSTRAR RESPUESTA
         # --------------------------------------------------
 
         st.session_state.mensajes.append(
@@ -1616,5 +1920,10 @@ PREGUNTA DEL USUARIO:
             }
         )
 
-        with st.chat_message("assistant"):
-            st.markdown(respuesta)
+        with st.chat_message(
+            "assistant"
+        ):
+
+            st.markdown(
+                respuesta
+            )
