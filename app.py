@@ -626,6 +626,169 @@ def cargar_trafico_actual():
     )
 
     return df, fecha_hora
+
+# --------------------------------------------------
+# CARGA DATOS ACCIDENTES
+# --------------------------------------------------
+@st.cache_data(ttl=21600)
+def cargar_accidentes():
+
+    urls = {
+        2019: "https://datos.madrid.es/dataset/300228-0-accidentes-trafico-detalle/resource/300228-11-accidentes-trafico-detalle-csv/download/300228-11-accidentes-trafico-detalle-csv.csv",
+        2020: "https://datos.madrid.es/dataset/300228-0-accidentes-trafico-detalle/resource/300228-8-accidentes-trafico-detalle-csv/download/300228-8-accidentes-trafico-detalle-csv.csv",
+        2021: "https://datos.madrid.es/dataset/300228-0-accidentes-trafico-detalle/resource/300228-33-accidentes-trafico-detalle-csv/download/300228-33-accidentes-trafico-detalle-csv.csv",
+        2022: "https://datos.madrid.es/dataset/300228-0-accidentes-trafico-detalle/resource/300228-5-accidentes-trafico-detalle-csv/download/300228-5-accidentes-trafico-detalle-csv.csv",
+        2023: "https://datos.madrid.es/dataset/300228-0-accidentes-trafico-detalle/resource/300228-3-accidentes-trafico-detalle-csv/download/300228-3-accidentes-trafico-detalle-csv.csv",
+        2024: "https://datos.madrid.es/dataset/300228-0-accidentes-trafico-detalle/resource/300228-2-accidentes-trafico-detalle-csv/download/300228-2-accidentes-trafico-detalle-csv.csv",
+        2025: "https://datos.madrid.es/dataset/300228-0-accidentes-trafico-detalle/resource/300228-1-accidentes-trafico-detalle-csv/download/300228-1-accidentes-trafico-detalle-csv.csv",
+        2026: "https://datos.madrid.es/dataset/300228-0-accidentes-trafico-detalle/resource/300228-34-accidentes-trafico-detalle/download/300228-34-accidentes-trafico-detalle.csv",
+    }
+
+    dataframes = []
+
+    # ----------------------------------------------
+    # DESCARGAR CADA AÑO
+    # ----------------------------------------------
+
+    for anio, url in urls.items():
+
+        try:
+
+            df_anio = pd.read_csv(
+                url,
+                sep=";",
+                encoding="utf-8"
+            )
+
+            df_anio["anio"] = anio
+
+            dataframes.append(df_anio)
+
+        except Exception as error:
+
+            print(
+                f"Error cargando accidentes {anio}: {error}"
+            )
+
+    # Si no se ha podido cargar ningún año
+    if not dataframes:
+        return pd.DataFrame()
+
+    # ----------------------------------------------
+    # UNIR TODOS LOS AÑOS
+    # ----------------------------------------------
+
+    df_accidentes = pd.concat(
+        dataframes,
+        ignore_index=True
+    )
+
+    # ----------------------------------------------
+    # FECHA
+    # ----------------------------------------------
+
+    df_accidentes["fecha"] = pd.to_datetime(
+        df_accidentes["fecha"],
+        dayfirst=True,
+        errors="coerce"
+    )
+
+    # ----------------------------------------------
+    # HORA
+    # ----------------------------------------------
+
+    df_accidentes["hora_dt"] = pd.to_datetime(
+        df_accidentes["hora"],
+        format="%H:%M:%S",
+        errors="coerce"
+    )
+
+    df_accidentes["hora_num"] = (
+        df_accidentes["hora_dt"].dt.hour
+    )
+
+    # ----------------------------------------------
+    # MES
+    # ----------------------------------------------
+
+    df_accidentes["mes"] = (
+        df_accidentes["fecha"].dt.month
+    )
+
+    # ----------------------------------------------
+    # LIMPIAR COLUMNAS DE TEXTO
+    # ----------------------------------------------
+
+    columnas_texto = [
+        "distrito",
+        "tipo_accidente",
+        "estado_meteorológico",
+        "tipo_vehiculo",
+        "tipo_persona",
+        "rango_edad",
+        "sexo",
+        "lesividad"
+    ]
+
+    for columna in columnas_texto:
+
+        if columna in df_accidentes.columns:
+
+            df_accidentes[columna] = (
+                df_accidentes[columna]
+                .astype("string")
+                .str.strip()
+            )
+
+    # ----------------------------------------------
+    # COORDENADAS
+    # ----------------------------------------------
+
+    df_accidentes["coordenada_x_utm"] = pd.to_numeric(
+        df_accidentes["coordenada_x_utm"],
+        errors="coerce"
+    )
+
+    df_accidentes["coordenada_y_utm"] = pd.to_numeric(
+        df_accidentes["coordenada_y_utm"],
+        errors="coerce"
+    )
+
+    # ----------------------------------------------
+    # CONVERTIR COORDENADAS UTM A LATITUD / LONGITUD
+    # ----------------------------------------------
+
+    transformer_acc = Transformer.from_crs(
+        "EPSG:25830",
+        "EPSG:4326",
+        always_xy=True
+    )
+
+    coords_validas = (
+        df_accidentes["coordenada_x_utm"].notna()
+        & df_accidentes["coordenada_y_utm"].notna()
+    )
+
+    df_accidentes["longitud"] = pd.NA
+    df_accidentes["latitud"] = pd.NA
+
+    if coords_validas.any():
+        lon, lat = transformer_acc.transform(
+            df_accidentes.loc[coords_validas, "coordenada_x_utm"].to_numpy(),
+            df_accidentes.loc[coords_validas, "coordenada_y_utm"].to_numpy()
+        )
+        df_accidentes.loc[coords_validas, "longitud"] = lon
+        df_accidentes.loc[coords_validas, "latitud"] = lat
+
+    df_accidentes["longitud"] = pd.to_numeric(df_accidentes["longitud"], errors="coerce")
+    df_accidentes["latitud"] = pd.to_numeric(df_accidentes["latitud"], errors="coerce")
+
+    # ----------------------------------------------
+    # DEVOLVER DATAFRAME LIMPIO
+    # ----------------------------------------------
+
+    return df_accidentes
+
 # --------------------------------------------------
 # GUARDAR CAPTURAS EN SQLITE
 # --------------------------------------------------
@@ -851,15 +1014,14 @@ for col, (titulo, valor, nota) in zip(cols, datos_kpi):
 # PESTAÑAS
 # --------------------------------------------------
 
-tab_ahora, tab_mapa, tab_historico, tab_chat = st.tabs(
+tab_ahora, tab_mapa, tab_accidentes, tab_chat = st.tabs(
     [
-        "🚦 Ahora",
-        "🗺️ Mapa",
-        "📈 Histórico",
-        "💬 Chat IA"
+        "🚦 Tráfico actual",
+        "🗺️ Live Map",
+        "🚨 Accidentes",
+        "✦ Ask Madrid Traffic Explorer"
     ]
 )
-
 
 # --------------------------------------------------
 # TAB AHORA
@@ -1057,165 +1219,6 @@ with tab_mapa:
         f"Mostrando {len(df_mapa):,} puntos de medición."
     )
 
-
-
-# --------------------------------------------------
-# TAB HISTÓRICO
-# --------------------------------------------------
-
-with tab_historico:
-
-    st.markdown(
-        '<div class="section-title">📈 Evolución histórica del tráfico</div>',
-        unsafe_allow_html=True
-    )
-
-    st.caption(
-        "Consulta cómo ha evolucionado el tráfico en cada punto "
-        "a partir de las mediciones almacenadas en SQLite."
-    )
-
-    # Conectar con SQLite
-    conexion_db = sqlite3.connect("trafico_madrid.db")
-
-    # Leer datos históricos
-    df_historico = pd.read_sql_query(
-        """
-        SELECT *
-        FROM trafico
-        ORDER BY fecha_hora
-        """,
-        conexion_db
-    )
-
-    conexion_db.close()
-
-    # Convertir fecha a datetime
-    df_historico["fecha_hora"] = pd.to_datetime(
-        df_historico["fecha_hora"]
-    )
-
-    # --------------------------------------------------
-    # INFORMACIÓN GENERAL DEL HISTÓRICO
-    # --------------------------------------------------
-
-    numero_registros = len(df_historico)
-
-    numero_capturas = df_historico["fecha_hora"].nunique()
-
-    numero_puntos = df_historico["idelem"].nunique()
-
-    col1, col2, col3 = st.columns(3)
-
-    col1.metric(
-        "📊 Mediciones almacenadas",
-        f"{numero_registros:,}"
-    )
-
-    col2.metric(
-        "🕒 Capturas históricas",
-        numero_capturas
-    )
-
-    col3.metric(
-        "📍 Puntos registrados",
-        f"{numero_puntos:,}"
-    )
-
-    st.divider()
-
-    # --------------------------------------------------
-    # SELECTOR DE PUNTO
-    # --------------------------------------------------
-
-    puntos = (
-        df_historico[
-            ["idelem", "descripcion"]
-        ]
-        .drop_duplicates()
-        .dropna(subset=["descripcion"])
-        .sort_values("descripcion")
-    )
-
-    opciones_puntos = {
-        f"{fila.descripcion} · ID {fila.idelem}": fila.idelem
-        for fila in puntos.itertuples()
-    }
-
-    punto_seleccionado = st.selectbox(
-        "📍 Selecciona un punto de medición",
-        options=list(opciones_puntos.keys())
-    )
-
-    id_seleccionado = opciones_puntos[punto_seleccionado]
-
-    # Filtrar histórico del punto
-    df_punto = df_historico[
-        df_historico["idelem"] == id_seleccionado
-    ].copy()
-
-    # --------------------------------------------------
-    # GRÁFICO DE EVOLUCIÓN
-    # --------------------------------------------------
-
-    st.subheader("Evolución del tráfico")
-
-    indicador = st.selectbox(
-        "¿Qué quieres analizar?",
-        [
-            "Flujo de vehículos",
-            "Ocupación de la vía",
-            "Saturación de la vía"
-        ]
-    )
-
-    mapa_indicadores = {
-        "Flujo de vehículos": {
-            "columna": "intensidad",
-            "unidad": "veh/h"
-        },
-        "Ocupación de la vía": {
-            "columna": "ocupacion",
-            "unidad": "%"
-        },
-        "Saturación de la vía": {
-            "columna": "carga",
-            "unidad": "%"
-        }
-    }
-
-    columna = mapa_indicadores[indicador]["columna"]
-    unidad = mapa_indicadores[indicador]["unidad"]
-
-    fig_historico = px.line(
-        df_punto,
-        x="fecha_hora",
-        y=columna,
-        markers=True,
-        labels={
-            "fecha_hora": "Fecha y hora",
-            columna: f"{indicador} ({unidad})"
-        }
-    )
-
-    fig_historico.update_layout(
-        height=480,
-        xaxis_title="",
-        yaxis_title=f"{indicador} ({unidad})",
-        hovermode="x unified",
-        margin=dict(
-            l=20,
-            r=20,
-            t=30,
-            b=20
-        )
-    )
-
-    st.plotly_chart(
-        fig_historico,
-        use_container_width=True
-    )
-
 # --------------------------------------------------
 # BUSCAR PUNTOS RELEVANTES
 # --------------------------------------------------
@@ -1253,6 +1256,156 @@ def buscar_puntos_relevantes(pregunta, df, limite=8):
     return df[
         df["descripcion"].isin(coincidencias)
     ].copy()
+
+# --------------------------------------------------
+# TAB ACCIDENTES
+# --------------------------------------------------
+
+with tab_accidentes:
+    st.markdown('<div class="section-title">🚨 Siniestralidad vial en Madrid</div>', unsafe_allow_html=True)
+    st.caption("Datos oficiales de Policía Municipal · 2019–2026 · Actualización mensual")
+
+    with st.spinner("Cargando datos de accidentes..."):
+        df_accidentes = cargar_accidentes()
+
+    if df_accidentes.empty:
+        st.error("No se han podido cargar los datos de accidentes.")
+    else:
+        # Una fila por accidente real
+        df_siniestros = (
+            df_accidentes.sort_values("fecha")
+            .drop_duplicates(subset=["num_expediente"])
+            .copy()
+        )
+
+        # FILTROS
+        f1, f2, f3 = st.columns(3)
+        anios = sorted(df_siniestros["anio"].dropna().astype(int).unique().tolist(), reverse=True)
+        with f1:
+            anio = st.selectbox("📅 Año", anios, index=0, key="acc_anio")
+
+        base_anio = df_siniestros[df_siniestros["anio"] == anio].copy()
+        distritos = ["Todos"] + sorted(base_anio["distrito"].dropna().astype(str).unique().tolist())
+        with f2:
+            distrito = st.selectbox("📍 Distrito", distritos, index=0, key="acc_distrito")
+
+        base_distrito = base_anio.copy()
+        if distrito != "Todos":
+            base_distrito = base_distrito[base_distrito["distrito"] == distrito].copy()
+
+        tipos = ["Todos"] + sorted(base_distrito["tipo_accidente"].dropna().astype(str).unique().tolist())
+        with f3:
+            tipo = st.selectbox("🚗 Tipo de accidente", tipos, index=0, key="acc_tipo")
+
+        df_filtrado = base_distrito.copy()
+        if tipo != "Todos":
+            df_filtrado = df_filtrado[df_filtrado["tipo_accidente"] == tipo].copy()
+
+        expedientes = set(df_filtrado["num_expediente"].dropna().astype(str))
+        df_personas_filtrado = df_accidentes[df_accidentes["num_expediente"].astype(str).isin(expedientes)].copy()
+
+        st.divider()
+
+        # KPIs
+        total_accidentes = df_filtrado["num_expediente"].nunique()
+        conteo_distritos = df_filtrado["distrito"].value_counts()
+        distrito_top = conteo_distritos.index[0] if not conteo_distritos.empty else "—"
+        conteo_tipos = df_filtrado["tipo_accidente"].value_counts()
+        tipo_top = conteo_tipos.index[0] if not conteo_tipos.empty else "—"
+        conteo_horas = df_filtrado["hora_num"].dropna().astype(int).value_counts()
+        if not conteo_horas.empty:
+            h = int(conteo_horas.index[0])
+            hora_punta = f"{h:02d}:00–{(h + 1) % 24:02d}:00"
+        else:
+            hora_punta = "—"
+
+        k1, k2, k3, k4 = st.columns(4)
+        k1.metric("🚨 Accidentes", f"{total_accidentes:,}")
+        k2.metric("👥 Personas implicadas", f"{len(df_personas_filtrado):,}")
+        k3.metric("📍 Distrito destacado", distrito_top)
+        k4.metric("🕐 Hora con más accidentes", hora_punta)
+        st.caption(f"Tipo de accidente más frecuente en la selección: **{tipo_top}**")
+
+        st.divider()
+        st.markdown('<div class="section-title">🗺️ Dónde ocurren los accidentes</div>', unsafe_allow_html=True)
+        col_mapa, col_insights = st.columns([3.2, 1])
+        df_mapa_acc = df_filtrado.dropna(subset=["latitud", "longitud"]).copy()
+        df_mapa_acc = df_mapa_acc[
+            df_mapa_acc["latitud"].between(40.2, 40.65)
+            & df_mapa_acc["longitud"].between(-4.05, -3.45)
+        ].copy()
+
+        with col_mapa:
+            if df_mapa_acc.empty:
+                st.info("No hay coordenadas disponibles para esta selección.")
+            else:
+                fig_acc_mapa = px.scatter_map(
+                    df_mapa_acc, lat="latitud", lon="longitud", hover_name="localizacion",
+                    hover_data={"fecha": True, "hora": True, "distrito": True, "tipo_accidente": True, "latitud": False, "longitud": False},
+                    zoom=10, height=560
+                )
+                fig_acc_mapa.update_traces(marker={"size": 7, "opacity": 0.65})
+                fig_acc_mapa.update_layout(
+                    map_style="open-street-map", map_center={"lat": 40.4168, "lon": -3.7038},
+                    margin=dict(l=0, r=0, t=0, b=0), showlegend=False
+                )
+                st.plotly_chart(fig_acc_mapa, use_container_width=True)
+
+        with col_insights:
+            st.markdown("#### ⚠️ Insights")
+            if total_accidentes == 0:
+                st.info("No hay accidentes para los filtros seleccionados.")
+            else:
+                dias = df_filtrado["fecha"].dt.day_name().value_counts()
+                dia_top = dias.index[0] if not dias.empty else "—"
+                traduccion = {"Monday":"Lunes","Tuesday":"Martes","Wednesday":"Miércoles","Thursday":"Jueves","Friday":"Viernes","Saturday":"Sábado","Sunday":"Domingo"}
+                dia_top = traduccion.get(dia_top, dia_top)
+                st.metric("📍 Distrito", distrito_top)
+                st.metric("🕐 Franja punta", hora_punta)
+                st.metric("📅 Día más frecuente", dia_top)
+                st.metric("🚗 Tipología", tipo_top)
+
+        st.divider()
+        st.markdown('<div class="section-title">🕐 Cuándo ocurren</div>', unsafe_allow_html=True)
+        accidentes_hora = (
+            df_filtrado.dropna(subset=["hora_num"])
+            .groupby("hora_num")["num_expediente"].nunique()
+            .reindex(range(24), fill_value=0).reset_index()
+        )
+        accidentes_hora.columns = ["Hora", "Accidentes"]
+        fig_horas = px.bar(accidentes_hora, x="Hora", y="Accidentes", text="Accidentes")
+        fig_horas.update_layout(height=380, xaxis=dict(tickmode="linear", dtick=1, title="Hora del día"), yaxis_title="Accidentes", showlegend=False, margin=dict(l=10,r=10,t=20,b=10))
+        fig_horas.update_traces(textposition="outside")
+        st.plotly_chart(fig_horas, use_container_width=True)
+
+        g1, g2 = st.columns(2)
+        with g1:
+            st.markdown('<div class="section-title">📈 Evolución mensual</div>', unsafe_allow_html=True)
+            meses = (
+                df_filtrado.dropna(subset=["mes"])
+                .groupby("mes")["num_expediente"].nunique()
+                .reindex(range(1,13), fill_value=0).reset_index()
+            )
+            meses.columns = ["Mes", "Accidentes"]
+            nombres = {1:"Ene",2:"Feb",3:"Mar",4:"Abr",5:"May",6:"Jun",7:"Jul",8:"Ago",9:"Sep",10:"Oct",11:"Nov",12:"Dic"}
+            meses["Mes_nombre"] = meses["Mes"].map(nombres)
+            fig_meses = px.line(meses, x="Mes_nombre", y="Accidentes", markers=True)
+            fig_meses.update_layout(height=390, xaxis_title="", yaxis_title="Accidentes", margin=dict(l=10,r=10,t=20,b=10))
+            st.plotly_chart(fig_meses, use_container_width=True)
+
+        with g2:
+            st.markdown('<div class="section-title">🚗 Tipos de accidente</div>', unsafe_allow_html=True)
+            tipos_acc = df_filtrado["tipo_accidente"].value_counts().head(8).sort_values().reset_index()
+            tipos_acc.columns = ["Tipo", "Accidentes"]
+            fig_tipos = px.bar(tipos_acc, x="Accidentes", y="Tipo", orientation="h", text="Accidentes")
+            fig_tipos.update_layout(height=390, xaxis_title="Accidentes", yaxis_title="", showlegend=False, margin=dict(l=10,r=10,t=20,b=10))
+            fig_tipos.update_traces(textposition="outside")
+            st.plotly_chart(fig_tipos, use_container_width=True)
+
+        st.caption(
+            "Cada accidente se cuenta una sola vez mediante num_expediente. "
+            "El indicador de personas implicadas utiliza el dataset detallado."
+        )
 
 
 # --------------------------------------------------
