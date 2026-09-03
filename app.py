@@ -1110,20 +1110,34 @@ with tab_ahora:
     )
 
     st.dataframe(
-        top_problemas[
-            [
-                "descripcion",
-                "estado_trafico",
-                "intensidad",
-                "ocupacion",
-                "carga"
-            ]
-        ],
-        use_container_width=True,
-        hide_index=True
-    )
-
-
+    top_problemas[
+        [
+            "descripcion",
+            "estado_trafico",
+            "intensidad",
+            "ocupacion",
+            "carga"
+        ]
+    ],
+    use_container_width=True,
+    hide_index=True,
+    column_config={
+        "descripcion": "Punto de medición",
+        "estado_trafico": "Estado",
+        "intensidad": st.column_config.NumberColumn(
+            "Intensidad",
+            format="%.0f veh/h"
+        ),
+        "ocupacion": st.column_config.NumberColumn(
+            "Ocupación",
+            format="%.0f %%"
+        ),
+        "carga": st.column_config.NumberColumn(
+            "Carga",
+            format="%.0f"
+        )
+    }
+)
 # --------------------------------------------------
 # TAB MAPA
 # --------------------------------------------------
